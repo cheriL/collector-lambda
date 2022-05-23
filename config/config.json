@@ -1,0 +1,16 @@
+{
+  "Region": "ap-southeast-1",
+  "Credential": {
+    "AccessKey":"",
+    "SecretKey":""
+  },
+  "Athena": {
+    "Database": "mydb",
+    "OutLocation": "s3://collector-athena-query-bucket/"
+  },
+  "Github": {
+    "Owner": "pingcap",
+    "Repo": "tidb",
+    "ReqPerPage": 1000
+  }
+}
