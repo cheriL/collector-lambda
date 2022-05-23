@@ -28,29 +28,24 @@ type Config struct {
 	Github     GithubConf
 }
 
-type MyEvent struct {
-	Name string `json:"name"`
-}
+var cfg *Config
 
-func HandleRequest(ctx context.Context, name MyEvent) (string, error) {
-	return fmt.Sprintf("Hello %s!", name.Name ), nil
-}
-
-func main() {
-	var cfg *Config
+func init() {
 	config.LoadJSONFile("./config/config.json", &cfg)
+}
 
-	_, err := athena.NewClient(cfg.Region, cfg.Credential.AccessKey, cfg.Credential.SecretKey, cfg.Athena)
+func HandleRequest(ctx context.Context) error {
+	athenaClient, err := athena.NewClient(cfg.Region, cfg.Credential.AccessKey, cfg.Credential.SecretKey, cfg.Athena)
 	if err != nil {
-
+		return err
 	}
-	//results, err := athenaClient.Execute("select max(CreatedAt) from records;")
-	latestDate, _ := time.Parse(util.TimeFormat, "2008-09-15 03:04:05.324")
+	results, err := athenaClient.Execute("select max(CreatedAt) from records;")
+	date := results.Rows[1].String()
+	latestDate, _ := time.Parse(util.TimeFormat, date)
 
 	var dataList []models.Data
 
 	//ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
-	ctx := context.Background()
 	//tc := oauth2.NewClient(ctx, ts)
 	client := github.NewClient(nil)
 
@@ -67,7 +62,7 @@ func main() {
 		issues, resp, err := client.Issues.ListByRepo(ctx, cfg.Github.Owner, cfg.Github.Repo, iOp)
 		if err != nil {
 			log.Printf("List Issues error: %s. Since[%v]. Page[%d]. PerPage[%d]", err.Error(), latestDate, iOp.Page, iOp.PerPage)
-			// TODO
+			return err
 		}
 		iOp.Page += 1
 		if iOp.Page > resp.LastPage {
@@ -110,7 +105,7 @@ func main() {
 		pullRequests, resp, err := client.PullRequests.List(ctx, cfg.Github.Owner, cfg.Github.Repo, prOp)
 		if err != nil {
 			log.Printf("List prs error: %s. Page[%d]. PerPage[%d]", err.Error(), iOp.Page, iOp.PerPage)
-			// TODO
+			return err
 		}
 		iOp.Page += 1
 		if iOp.Page > resp.LastPage {
@@ -144,6 +139,20 @@ func main() {
 		}
 	}
 
+	for _, d := range dataList {
+		stmt := fmt.Sprintf(`
+insert into records(ID,Number,Type,USerID,UserType,UserLogin,CreatedAt) 
+values 
+(%d, %d, %d, %d, %d, %s, timestamp '%s')`, d.ID, d.Number, d.Type, d.UserID, d.UserType, d.UserLogin, d.CreatedAt)
+		if _, err := athenaClient.Execute(stmt); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func main() {
 	lambda.Start(HandleRequest)
 }
 
