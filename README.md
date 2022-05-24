@@ -1,6 +1,6 @@
 # collector-lambda
 
-
+A tool to collect issues and prs.
 
 ### docker build
 ```
