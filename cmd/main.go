@@ -169,6 +169,7 @@ func HandleRequest(ctx context.Context) error {
 func main() {
 	// test
 	// HandleRequest(context.Background())
+
 	lambda.Start(HandleRequest)
 }
 
