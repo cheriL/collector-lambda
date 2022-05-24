@@ -5,6 +5,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/athena"
+	"time"
 )
 
 type Config struct {
@@ -14,7 +15,7 @@ type Config struct {
 
 type Client struct {
 	Config  Config
-	session *session.Session
+	client  *athena.Athena
 }
 
 func NewClient(region, id, secret string, conf Config) (*Client, error) {
@@ -26,14 +27,15 @@ func NewClient(region, id, secret string, conf Config) (*Client, error) {
 		return nil, err
 	}
 
+	c := athena.New(sess, aws.NewConfig().WithLogLevel(aws.LogDebugWithHTTPBody))
+
 	return &Client{
 		Config: conf,
-		session: sess,
+		client: c,
 	}, nil
 }
 
-func (c *Client) Execute(stmt string) (*athena.ResultSet, error) {
-	_athena := athena.New(c.session, aws.NewConfig().WithLogLevel(aws.LogDebugWithHTTPBody))
+func (c *Client) Execute(stmt string) (string, error) {
 	input := &athena.StartQueryExecutionInput{
 		QueryExecutionContext: &athena.QueryExecutionContext{
 			Database: aws.String(c.Config.DataBase),
@@ -43,16 +45,37 @@ func (c *Client) Execute(stmt string) (*athena.ResultSet, error) {
 			OutputLocation: aws.String(c.Config.OutLocation),
 		},
 	}
-	out, err := _athena.StartQueryExecution(input)
+	out, err := c.client.StartQueryExecution(input)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	queryID := out.QueryExecutionId
-	result, err := _athena.GetQueryResults(&athena.GetQueryResultsInput{
-		QueryExecutionId: queryID,
-	})
-	if err != nil {
-		return nil, err
+	queryID := aws.StringValue(out.QueryExecutionId)
+	return queryID, nil
+}
+
+func (c *Client) GetResult(queryID string) (*athena.ResultSet, error) {
+	var result *athena.GetQueryResultsOutput
+	var err error
+
+	query := true
+	for query {
+		if result, err = c.client.GetQueryResults(&athena.GetQueryResultsInput{
+			QueryExecutionId: aws.String(queryID),
+		}); err == nil {
+			break
+		} else {
+			e, ok := err.(*athena.InvalidRequestException)
+			if !ok {
+				return nil, err
+			}
+			errCode := aws.StringValue(e.AthenaErrorCode)
+			if errCode != "INVALID_QUERY_EXECUTION_STATE" {
+				return nil, err
+			}
+		}
+
+		time.Sleep(1 * time.Second)
 	}
+
 	return result.ResultSet, nil
 }

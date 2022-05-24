@@ -1,7 +1,5 @@
 package models
 
-import "time"
-
 type Data struct {
 	ID         int64     `json:"id"`
 	Number     int       `json:"number"`
@@ -10,7 +8,7 @@ type Data struct {
 	UserType   UserType  `json:"user_type"`
 	UserLogin  string    `json:"user_login"`
 	//State      string    `json:"state"`
-	CreatedAt  time.Time `json:"created_at"`
+	CreatedAt  string    `json:"created_at"`
 	//UpdatedAt  time.Time `json:"updated_at"`
 	//ClosedAt   time.Time `json:"closed_at"`
 }
@@ -28,8 +26,3 @@ const (
 	DataTypeIssue = iota
 	DataTypePr
 )
-
-type DataLabel struct {
-	DataId    int
-	LabelName string
-}

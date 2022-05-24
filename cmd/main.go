@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/NYTimes/gizmo/config"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/google/go-github/v44/github"
 	"log"
 	"strings"
@@ -37,11 +38,26 @@ func init() {
 func HandleRequest(ctx context.Context) error {
 	athenaClient, err := athena.NewClient(cfg.Region, cfg.Credential.AccessKey, cfg.Credential.SecretKey, cfg.Athena)
 	if err != nil {
+		log.Printf(err.Error())
 		return err
 	}
-	results, err := athenaClient.Execute("select max(CreatedAt) from records;")
-	date := results.Rows[1].String()
-	latestDate, _ := time.Parse(util.TimeFormat, date)
+
+	var latestDate time.Time
+	quertID, err := athenaClient.Execute("select max(CreatedAt) from records;")
+	if err != nil {
+		log.Printf(err.Error())
+		return err
+	}
+	results, err := athenaClient.GetResult(quertID)
+	if err != nil {
+		log.Printf(err.Error())
+		return err
+	}
+	if len(results.Rows) > 1 {
+		value := results.Rows[1].Data[0].VarCharValue
+		date := aws.StringValue(value)
+		latestDate, _ = time.Parse(util.TimeFormat, date)
+	}
 
 	var dataList []models.Data
 
@@ -84,7 +100,7 @@ func HandleRequest(ctx context.Context) error {
 				UserID:    issue.GetUser().GetID(),
 				UserType:  models.UserType(userType),
 				UserLogin: issue.GetUser().GetLogin(),
-				CreatedAt: issue.GetCreatedAt(),
+				CreatedAt: issue.GetCreatedAt().Format(util.TimeFormat),
 			}
 
 			dataList = append(dataList, data)
@@ -128,11 +144,11 @@ func HandleRequest(ctx context.Context) error {
 			data := models.Data{
 				ID:        pr.GetID(),
 				Number:    pr.GetNumber(),
-				Type:      models.DataTypeIssue,
+				Type:      models.DataTypePr,
 				UserID:    pr.GetUser().GetID(),
 				UserType:  models.UserType(userType),
 				UserLogin: pr.GetUser().GetLogin(),
-				CreatedAt: pr.GetCreatedAt(),
+				CreatedAt: pr.GetCreatedAt().Format(util.TimeFormat),
 			}
 
 			dataList = append(dataList, data)
@@ -140,10 +156,8 @@ func HandleRequest(ctx context.Context) error {
 	}
 
 	for _, d := range dataList {
-		stmt := fmt.Sprintf(`
-insert into records(ID,Number,Type,USerID,UserType,UserLogin,CreatedAt) 
-values 
-(%d, %d, %d, %d, %d, %s, timestamp '%s')`, d.ID, d.Number, d.Type, d.UserID, d.UserType, d.UserLogin, d.CreatedAt)
+		stmt := fmt.Sprintf(`insert into records(ID,Number,Type,USerID,UserType,UserLogin,CreatedAt) values 
+(%d, %d, %d, %d, %d, '%s', timestamp '%s');`, d.ID, d.Number, d.Type, d.UserID, d.UserType, d.UserLogin, d.CreatedAt)
 		if _, err := athenaClient.Execute(stmt); err != nil {
 			return err
 		}
@@ -153,6 +167,9 @@ values
 }
 
 func main() {
+	// test
+	// HandleRequest(context.Background())
+
 	lambda.Start(HandleRequest)
 }
 
