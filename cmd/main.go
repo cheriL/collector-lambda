@@ -42,6 +42,7 @@ func HandleRequest(ctx context.Context) error {
 		return err
 	}
 
+	//get the latest date
 	var latestDate time.Time
 	quertID, err := athenaClient.Execute("select max(CreatedAt) from records;")
 	if err != nil {
@@ -65,6 +66,7 @@ func HandleRequest(ctx context.Context) error {
 	//tc := oauth2.NewClient(ctx, ts)
 	client := github.NewClient(nil)
 
+	//fetch issues
 	iOp := &github.IssueListByRepoOptions{
 		State: "all",
 		Since: latestDate,
@@ -107,6 +109,7 @@ func HandleRequest(ctx context.Context) error {
 		}
 	}
 
+	//fetch prs
 	prOp := &github.PullRequestListOptions{
 		State: "all",
 		Sort: "created",
@@ -155,6 +158,7 @@ func HandleRequest(ctx context.Context) error {
 		}
 	}
 
+	//insert data
 	for _, d := range dataList {
 		stmt := fmt.Sprintf(`insert into records(ID,Number,Type,USerID,UserType,UserLogin,CreatedAt) values 
 (%d, %d, %d, %d, %d, '%s', timestamp '%s');`, d.ID, d.Number, d.Type, d.UserID, d.UserType, d.UserLogin, d.CreatedAt)
